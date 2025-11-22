@@ -1,7 +1,9 @@
 <?php
 require_once '../includes/db_connection.php';
-header('Content-Type: application/json');
+require_once '../includes/auth.php'; 
 
+header('Content-Type: application/json');
+verificarUsuario(); 
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
@@ -43,11 +45,12 @@ switch ($method) {
         break;
 
     case 'POST':
+        verificarAdmin();
         // Agregar nuevo producto y su receta
         $data = json_decode(file_get_contents("php://input"), true);
         $nombre = $data['nombre_producto'] ?? '';
         $precio = $data['precio_venta'] ?? 0;
-        $receta = $data['receta'] ?? []; // Array de {id_insumo, cantidad_requerida}
+        $receta = $data['receta'] ?? []; 
 
         if (!$nombre || $precio <= 0) {
             http_response_code(400);

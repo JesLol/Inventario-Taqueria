@@ -50,6 +50,69 @@ window.app = (function(){
             throw error;
         }
     }
+    async function performLogin(){
+        const { value: password } = await Swal.fire({
+            title: 'Iniciar sesión',
+            text: 'Ingresa tu código de acceso',
+            input: 'password',
+            inputPlaceholder: 'Código / PIN',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            confirmButtonText: 'Entrar',
+            confirmButtonColor: 'var(--primary)',
+            inputValidator: (value) => {
+                if (!value) return 'Necesitas escribir tu código';
+            }
+        });
+
+        try {
+            // Llamada a la API de login
+            const response = await apiFetch('api/login.php', 'POST', { password });
+            state.currentUser = response.user;
+            
+            Swal.fire({
+                icon: 'success',
+                title: `Bienvenido, ${state.currentUser.nombre}`,
+                timer: 1500,
+                showConfirmButton: false
+            });
+            applyRolePermissions();
+            
+            // Cargar datos iniciales
+            await Promise.all([loadProductos()]); // Productos siempre necesarios
+            
+            if(state.currentUser.role === 'admin'){
+                await loadInsumos();
+                await loadReporteDiario();
+                changeView('insumos');
+            } else {
+                changeView('pos');
+            }
+
+        } catch (e) {
+            // Si falla, volver a pedir login
+            performLogin();
+        }
+    }
+
+    function applyRolePermissions(){
+        const role = state.currentUser.role;
+        const tabs = document.querySelectorAll('.tab-button');
+        
+        tabs.forEach(tab => {
+            const view = tab.dataset.view;
+            // Si no es admin, ocultar todo lo que no sea POS
+            if (role !== 'admin' && view !== 'pos') {
+                tab.style.display = 'none';
+            } else {
+                tab.style.display = 'flex';
+            }
+        });
+
+        // Actualizar header con nombre usuario
+        const headerTitle = document.querySelector('.app-title');
+        headerTitle.innerHTML += `<span style="font-size:0.8rem; font-weight:400; color:gray; margin-left:10px;">| ${state.currentUser.nombre} (${role})</span>`;
+    }
     
     // Interfaz
     function changeView(newView){
@@ -72,6 +135,7 @@ window.app = (function(){
     
     // Cargar datos
     async function loadInsumos(){
+        if(state.currentUser.role !== 'admin') return;
         try {
             const res = await apiFetch('api/insumos.php', 'GET');
             state.insumos = res.data;
@@ -89,12 +153,21 @@ window.app = (function(){
         } catch(e){}
     }
     
-    async function loadReporteDiario(){
+    async function loadReporteDiario(filter = 'diario'){
+        if (!state.currentUser || state.currentUser.role !== 'admin') return;
+
         try {
-            const res = await apiFetch('api/reporte_diario.php', 'GET');
-            state.reporte = res; // Asumimos que la API devuelve { resumen, productos_vendidos, consumo_insumos, ventas_detalladas }
-            if (state.currentView === 'reporte') renderReporteView();
-        } catch(e){}
+            // Pasamos el filtro por URL
+            const response = await apiFetch(`api/reporte_diario.php?filter=${filter}`, 'GET');
+            state.reporte = response;
+            state.reporteFilter = filter; // Guardamos el estado del filtro actual
+            
+            if (state.currentView === 'reporte'){
+                renderReporteView();
+            }
+        } catch (e){
+            console.warn("Error cargando reporte");
+        }
     }
     
     // Logica negocio
@@ -127,7 +200,13 @@ window.app = (function(){
     
     // Ventas
     async function registrarVenta(productos_vendidos, total){
-        await apiFetch('api/ventas.php', 'POST', { productos: productos_vendidos, total: total, id_usuario: 1 });
+        const id_usuario = state.currentUser ? state.currentUser.id : 1;
+        
+        await apiFetch('api/ventas.php', 'POST', { 
+            productos: productos_vendidos, 
+            total: total, 
+            id_usuario: id_usuario
+        });
         
         Swal.fire({
             icon: 'success',
@@ -135,11 +214,14 @@ window.app = (function(){
             text: `Total cobrado: $${total.toFixed(2)}`,
             confirmButtonColor: 'var(--success)'
         });
-        
+
         state.carrito = [];
         renderPosView();
-        loadInsumos(); // Actualizar stock merma
-        loadReporteDiario();
+        
+        if(state.currentUser.role === 'admin'){
+            loadInsumos();
+            loadReporteDiario();
+        }
     }
     
     // Handlers y eventos
@@ -249,10 +331,10 @@ window.app = (function(){
     }
     
     function updateTicketItemQuantity(id, qty){
-        const item = state.carrito.find(i => i.id_producto === id);
+        const item = state.carrito.find(i => i.id_producto == id);
         if(item){
             item.cantidad = qty;
-            if(item.cantidad <= 0) state.carrito = state.carrito.filter(i => i.id_producto !== id);
+            if(item.cantidad <= 0) state.carrito = state.carrito.filter(i => i.id_producto != id);
             renderPosView();
         }
     }
@@ -450,11 +532,29 @@ window.app = (function(){
     }
     
     function renderReporteView(){
-        const { resumen, consumo_insumos, productos_vendidos, ventas_detalladas } = state.reporte;
+        const { resumen, consumo_insumos, productos_vendidos, ventas_detalladas, periodo } = state.reporte;
         
+        const titulos = {
+            'diario': `Reporte de Hoy (${new Date().toLocaleDateString()})`,
+            'mensual': 'Reporte del Mes Actual',
+            'historico': 'Historial Completo de Ventas'
+        };
+        const tituloActual = titulos[periodo] || titulos['diario'];
+
+        // Helper para clases de botones activos
+        const btnClass = (type) => state.reporteFilter === type ? 'btn-primary' : 'btn-secondary';
+
         APP_CONTENT.innerHTML = `
             <div class="fade-in">
-                <h2>Reporte del Día <small style="font-weight:400; font-size:1rem; color:var(--text-secondary)">(${new Date().toLocaleDateString()})</small></h2>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">
+                    <h2>${tituloActual}</h2>
+                    
+                    <div class="btn-group">
+                        <button class="btn ${btnClass('diario')}" onclick="window.app.loadReporteDiario('diario')">Hoy</button>
+                        <button class="btn ${btnClass('mensual')}" onclick="window.app.loadReporteDiario('mensual')">Este Mes</button>
+                        <button class="btn ${btnClass('historico')}" onclick="window.app.loadReporteDiario('historico')">Histórico</button>
+                    </div>
+                </div>
                 
                 <div class="reporte-summary">
                     <div class="card summary-card">
@@ -462,7 +562,7 @@ window.app = (function(){
                         <p class="summary-value text-success">$${parseFloat(resumen.total_ventas || 0).toFixed(2)}</p>
                     </div>
                     <div class="card summary-card">
-                        <h4>Tickets</h4>
+                        <h4>Transacciones</h4>
                         <p class="summary-value">${resumen.num_ventas || 0}</p>
                     </div>
                     <div class="card summary-card">
@@ -470,14 +570,14 @@ window.app = (function(){
                         <p class="summary-value">${resumen.total_productos || 0}</p>
                     </div>
                 </div>
-        
+
                 <div class="report-grid">
                     <div class="card">
                         <h3>Productos Más Vendidos</h3>
                         <canvas id="chartVentas"></canvas>
                     </div>
                     <div class="card">
-                        <h3>Merma (Consumo Insumos)</h3>
+                        <h3>Merma (Insumos Usados)</h3>
                         <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                             <table class="data-table">
                                 <thead><tr><th>Insumo</th><th>Total Usado</th></tr></thead>
@@ -490,34 +590,35 @@ window.app = (function(){
                         </div>
                     </div>
                 </div>
-        
+
                 <div class="card mt-4">
-                    <h3><i class="fa-solid fa-list-ol"></i> Detalle de Ventas (Bitácora)</h3>
-                    <div class="table-responsive">
+                    <h3><i class="fa-solid fa-list-ol"></i> Detalle de Ventas</h3>
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Hora</th>
+                                    <th>Fecha/Hora</th> <th>Atendió</th>
                                     <th>Productos</th>
-                                    <th>Total Venta</th>
+                                    <th>Total</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${ventas_detalladas && ventas_detalladas.length > 0 ? ventas_detalladas.map(v => `
                                     <tr>
-                                        <td>${v.hora || 'N/A'}</td>
+                                        <td>${v.fecha_formato || v.hora}</td>
+                                        <td><span class="badge">${v.usuario}</span></td>
                                         <td>${v.descripcion_productos || 'Varios'}</td>
                                         <td style="font-weight:bold; color:var(--success)">$${parseFloat(v.total).toFixed(2)}</td>
                                     </tr>
-                                `).join('') : '<tr><td colspan="3" style="text-align:center; padding:1rem;">No hay ventas registradas hoy.</td></tr>'}
+                                `).join('') : '<tr><td colspan="4" class="text-center">No hay registros en este periodo.</td></tr>'}
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         `;
-        
-        // Render Chart
+
+        // Render Chart 
         if(document.getElementById('chartVentas')){
             new Chart(document.getElementById('chartVentas'), {
                 type: 'bar',
@@ -539,9 +640,7 @@ window.app = (function(){
     // Inicializacion
     function init(){
         setupStaticListeners();
-        Promise.all([loadInsumos(), loadProductos(), loadReporteDiario()]).then(() => {
-            changeView('insumos');
-        });
+        performLogin();
     }
     
     function setupStaticListeners(){
@@ -553,7 +652,11 @@ window.app = (function(){
     document.addEventListener('DOMContentLoaded', init);
     
     return {
-        handleStockUpdateClick, handleDeleteInsumoClick, addRecetaInput,
-        addItemToTicket, updateTicketItemQuantity, handleProcessSale, clearTicket
+        // funciones publicas
+        loadReporteDiario, handleStockUpdateClick, handleDeleteInsumoClick, addRecetaInput,
+        handleNewInsumoSubmit, handleNewProductoSubmit,
+        addItemToTicket, updateTicketItemQuantity, handleProcessSale, clearTicket,
+        // helpers de vista
+        renderInsumosView, renderProductosView, renderPosView, renderReporteView
     };
 })();

@@ -378,3 +378,25 @@ input:focus, select:focus {
     margin-bottom: 0.5rem;
     align-items: center;
 }
+
+.badge {
+    background-color: #e0f2fe;
+    color: #0369a1;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.btn-group {
+    display: flex;
+    gap: 0.25rem;
+    background: #e5e7eb;
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+}
+.btn-group .btn {
+    border-radius: 0.25rem;
+    border: none;
+    margin: 0;
+}

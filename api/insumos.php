@@ -1,23 +1,27 @@
 <?php
-// Conexion a la bdd
 require_once '../includes/db_connection.php';
+require_once '../includes/auth.php'; 
+
 header('Content-Type: application/json');
+
+// al menos sea un usuario registrado para ver datos
+verificarUsuario(); 
 
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
     case 'GET':
-        // Lee todos los insumos
+        // GET es seguro para Admin y Cajero, no agregamos verificarAdmin() aquí.
         $sql = "SELECT id_insumo, nombre, unidad_medida, stock_actual, costo_por_unidad FROM insumos ORDER BY nombre";
         $result = $conn->query($sql);
+        // ... (resto del código igual) ...
         $insumos = [];
-        while ($row = $result->fetch_assoc()) {
-            $insumos[] = $row;
-        }
+        while ($row = $result->fetch_assoc()) { $insumos[] = $row; }
         echo json_encode(['success' => true, 'data' => $insumos]);
         break;
 
     case 'POST':
+        verificarAdmin();
         // Agrega un nuevo insumo
         $data = json_decode(file_get_contents("php://input"), true);
         $nombre = $data['nombre'] ?? '';
@@ -44,6 +48,7 @@ switch ($method) {
         break;
 
     case 'PUT':
+        verificarAdmin();
         // Actualiza el stock de un insumo
         parse_str(file_get_contents("php://input"), $put_vars);
         $id = $put_vars['id_insumo'] ?? null;
@@ -68,6 +73,7 @@ switch ($method) {
         break;
 
     case 'DELETE':
+        verificarAdmin();
         // Eliminar un insumo
         parse_str(file_get_contents("php://input"), $delete_vars);
         $id = $delete_vars['id_insumo'] ?? null;
