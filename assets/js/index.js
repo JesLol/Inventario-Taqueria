@@ -4,6 +4,7 @@ window.app = (function(){
         insumos: [],
         productos: [],
         carrito: [], 
+        usuarios: [],
         reporte: {
             resumen: {},
             productos_vendidos: [],
@@ -129,6 +130,9 @@ window.app = (function(){
                 case 'productos': renderProductosView(); break;
                 case 'pos': renderPosView(); break;
                 case 'reporte': renderReporteView(); break;
+                case 'usuarios': 
+                    loadUsuarios(); 
+                    break;
             }
         }, 100); // Pequeño delay para UX
     }
@@ -223,9 +227,85 @@ window.app = (function(){
             loadReporteDiario();
         }
     }
+    //Usuarios
+    async function loadUsuarios() {
+        if (!state.currentUser || state.currentUser.role !== 'admin') {
+            renderUsuariosView('not_admin');
+            return;
+        }
+
+        try {
+            const res = await apiFetch('api/usuarios.php', 'GET');
+            state.usuarios = res.data;
+            renderUsuariosView('admin'); 
+        } catch (e) {
+            console.error("Fallo al cargar usuarios:", e);
+            state.usuarios = [];
+            renderUsuariosView('admin'); 
+        }
+    }
+
+    async function addUsuario(nombre, role, password) {
+        await apiFetch('api/usuarios.php', 'POST', { nombre, role, password });
+        Swal.fire({ 
+            icon: 'success', 
+            title: 'Guardado', 
+            text: 'Usuario registrado correctamente.', 
+            timer: 1500, 
+            showConfirmButton: false 
+        });
+        await loadUsuarios(); 
+    }
+
+    async function deleteUsuario(id) {
+        await apiFetch('api/usuarios.php', 'DELETE', { id });
+        Swal.fire({ 
+            icon: 'success', 
+            title: 'Eliminado', 
+            text: 'Usuario eliminado con éxito.', 
+            timer: 1500, 
+            showConfirmButton: false 
+        });
+        await loadUsuarios(); 
+    }
     
     // Handlers y eventos
-    
+
+    async function handleNewUserSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const nombre = form.nombre.value;
+        const role = form.role.value;
+        const password = form.password.value;
+        if (nombre && role && password) {
+            try {
+                await addUsuario(nombre, role, password);
+                form.reset();
+            } catch (e) { 
+                console.error("Error al registrar usuario:", e);
+            }
+        }
+    }
+    function handleDeleteUserClick(id) {
+        const user = (state.usuarios || []).find(u => u.id == id);
+        if (!user) return;
+        
+        Swal.fire({
+            title: `¿Eliminar a ${user.nombre}?`,
+            text: `El usuario con rol "${user.role}" será eliminado.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                deleteUsuario(id);
+            }
+        });
+    }
+
     async function handleNewInsumoSubmit(e){
         e.preventDefault();
         const form = e.target;
@@ -375,6 +455,64 @@ window.app = (function(){
     }
     
     // Renders
+
+    function renderUsuariosView(roleStatus) { 
+        if (roleStatus === 'not_admin') {
+            APP_CONTENT.innerHTML = '<p class="text-center text-gray-500 mt-10">Acceso Denegado. Se requiere ser Administrador.</p>';
+            return;
+        }
+        
+        const usuariosList = state.usuarios || [];
+
+        APP_CONTENT.innerHTML = `
+            <div class="fade-in">
+                <div class="card">
+                    <h3><i class="fa-solid fa-user-plus"></i> Registrar Nuevo Usuario</h3>
+                    <form id="form-nuevo-usuario" class="form-grid two-col">
+                        <input type="text" name="nombre" placeholder="Nombre (usado como usuario/PIN)" required>
+                        <select name="role" class="form-control" required>
+                            <option value="">Selecciona Rol...</option>
+                            <option value="admin">Administrador</option>
+                            <option value="cajero">Cajero</option>
+                        </select>
+                        <input type="password" name="password" placeholder="PIN/Password de Acceso" required>
+                        <button type="submit" class="btn btn-primary" style="grid-column: 2">Guardar Usuario</button>
+                    </form>
+                </div>
+        
+                <h3><i class="fa-solid fa-users"></i> Usuarios Registrados</h3>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre/Usuario</th>
+                                <th>Rol</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${usuariosList.map(u => `
+                                <tr>
+                                    <td><strong>${u.nombre}</strong></td>
+                                    <td>
+                                        <span class="badge ${u.role === 'admin' ? 'badge-primary' : 'badge-secondary'}">
+                                            ${u.role.toUpperCase()}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-danger btn-sm" onclick="window.app.handleDeleteUserClick(${u.id})">
+                                            <i class="fa-solid fa-trash"></i> Eliminar
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        document.getElementById('form-nuevo-usuario').addEventListener('submit', handleNewUserSubmit);
+    }
     
     function renderInsumosView(){
         APP_CONTENT.innerHTML = `
@@ -656,7 +794,17 @@ window.app = (function(){
         loadReporteDiario, handleStockUpdateClick, handleDeleteInsumoClick, addRecetaInput,
         handleNewInsumoSubmit, handleNewProductoSubmit,
         addItemToTicket, updateTicketItemQuantity, handleProcessSale, clearTicket,
+        //funciones de usuario
+        loadUsuarios,
+        handleDeleteUserClick,
+        handleNewUserSubmit,
+        loadReporteDiario, handleStockUpdateClick, handleDeleteInsumoClick, addRecetaInput,
+        handleNewInsumoSubmit, handleNewProductoSubmit,
+        addItemToTicket, updateTicketItemQuantity, handleProcessSale, clearTicket,
         // helpers de vista
-        renderInsumosView, renderProductosView, renderPosView, renderReporteView
+        renderInsumosView, renderProductosView, renderPosView, renderReporteView,
+        renderUsuariosView, 
+        // Estado
+        state
     };
 })();

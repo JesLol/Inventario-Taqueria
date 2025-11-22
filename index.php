@@ -7,8 +7,6 @@
     <link rel="stylesheet" href="assets/css/index.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <body>
     <div id="app" class="app-container">
@@ -31,6 +29,9 @@
                     <button class="tab-button" data-view="reporte">
                         <i class="fa-solid fa-chart-line"></i> Reporte Diario
                     </button>
+                    <button class="tab-button" data-view="usuarios">
+                        <i class="fa-solid fa-user"></i> Usuarios
+                    </button>
                 </nav>
             </div>
         </header>
@@ -44,6 +45,8 @@
             </div>
         </main>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="assets/js/index.js"></script>
 </body>
 </html>
