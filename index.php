@@ -5,39 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Taquería Admin - Control de Merma</title>
     <link rel="stylesheet" href="assets/css/index.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <body>
     <div id="app" class="app-container">
         <header class="header">
-            <div class="container">
-                <div class="header-content">
-                    <h1 class="app-title">
-                        <span>&#x1F32E;</span>
-                        Gestor Taquería
-                    </h1>
+            <div class="container header-inner">
+                <div class="brand">
+                    <div class="logo-icon">🌮</div>
+                    <h1 class="app-title">Gestor Taquería</h1>
                 </div>
                 <nav class="nav-tabs">
-                    <button class="tab-button" data-view="insumos">Insumos</button>
-                    <button class="tab-button" data-view="productos">Menú/Recetas</button>
-                    <button class="tab-button" data-view="pos">Punto de Venta</button>
-                    <button class="tab-button" data-view="reporte">Reporte Diario</button>
+                    <button class="tab-button" data-view="insumos">
+                        <i class="fa-solid fa-boxes-stacked"></i> Insumos
+                    </button>
+                    <button class="tab-button" data-view="productos">
+                        <i class="fa-solid fa-utensils"></i> Menú/Recetas
+                    </button>
+                    <button class="tab-button" data-view="pos">
+                        <i class="fa-solid fa-cash-register"></i> Punto de Venta
+                    </button>
+                    <button class="tab-button" data-view="reporte">
+                        <i class="fa-solid fa-chart-line"></i> Reporte Diario
+                    </button>
                 </nav>
             </div>
         </header>
+
         <main class="container main-content">
-            <div id="app-content">
-                <p class="text-center text-gray-500 mt-10">Cargando aplicación...</p>
+            <div id="app-content" class="fade-in">
+                <div class="loading-state">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    <p>Cargando aplicación...</p>
+                </div>
             </div>
         </main>
-        <div id="message-box" class="modal-overlay">
-            <div class="modal-content" id="message-content">
-                <h3 id="message-title" class="modal-title"></h3>
-                <p id="message-text" class="modal-body"></p>
-                <button onclick="window.app.hideMessage()" class="btn btn-primary modal-btn">Aceptar</button>
-            </div>
-        </div>
     </div>
     <script src="assets/js/index.js"></script>
 </body>
