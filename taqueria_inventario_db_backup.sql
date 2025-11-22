@@ -34,7 +34,7 @@ CREATE TABLE `detalle_venta` (
   KEY `id_producto` (`id_producto`),
   CONSTRAINT `detalle_venta_ibfk_1` FOREIGN KEY (`id_venta`) REFERENCES `ventas` (`id_venta`) ON DELETE CASCADE,
   CONSTRAINT `detalle_venta_ibfk_2` FOREIGN KEY (`id_producto`) REFERENCES `productos` (`id_producto`)
-) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -53,7 +53,10 @@ INSERT INTO `detalle_venta` VALUES
 (6,5,1,1,15.00),
 (7,6,1,1,15.00),
 (8,7,2,2,70.00),
-(9,7,1,2,30.00);
+(9,7,1,2,30.00),
+(10,8,1,1,15.00),
+(11,9,2,1,35.00),
+(12,9,1,1,15.00);
 /*!40000 ALTER TABLE `detalle_venta` ENABLE KEYS */;
 UNLOCK TABLES;
 commit;
@@ -84,10 +87,10 @@ LOCK TABLES `insumos` WRITE;
 /*!40000 ALTER TABLE `insumos` DISABLE KEYS */;
 set autocommit=0;
 INSERT INTO `insumos` VALUES
-(1,'Tortillas de Maíz','kg',9.300,20.00),
-(2,'Carne al Pastor','kg',9.440,120.00),
-(3,'Cebolla','unidad',49.600,2.50),
-(4,'Cilantro','manojo',9.920,8.00);
+(1,'Tortillas de Maíz','kg',9.100,20.00),
+(2,'Carne al Pastor','kg',9.280,120.00),
+(3,'Cebolla','unidad',49.500,2.50),
+(4,'Cilantro','manojo',9.900,8.00);
 /*!40000 ALTER TABLE `insumos` ENABLE KEYS */;
 UNLOCK TABLES;
 commit;
@@ -105,7 +108,7 @@ CREATE TABLE `productos` (
   `precio_venta` decimal(10,2) NOT NULL,
   PRIMARY KEY (`id_producto`),
   UNIQUE KEY `nombre_producto` (`nombre_producto`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -172,10 +175,11 @@ CREATE TABLE `usuarios` (
   `username` varchar(50) NOT NULL,
   `password_hash` varchar(255) NOT NULL,
   `fecha_creacion` timestamp NULL DEFAULT current_timestamp(),
+  `role` varchar(20) DEFAULT 'cajero',
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_uid` (`user_uid`),
   UNIQUE KEY `username` (`username`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -185,6 +189,9 @@ CREATE TABLE `usuarios` (
 LOCK TABLES `usuarios` WRITE;
 /*!40000 ALTER TABLE `usuarios` DISABLE KEYS */;
 set autocommit=0;
+INSERT INTO `usuarios` VALUES
+(5,'692246784ea317.03241049','David','David','$2y$12$0aRampHAQCUDN.uK4W62t.7SS3Ls.XgxlJM2/7pX7EfjkRvCg.RLi','2025-11-22 23:25:44','admin'),
+(9,'69224752c9b6f9.41730035','Jesus 2','Jesus 2','$2y$12$VL2BRNqvaiDfkuDN/d1H5.C9LgnTR0jFRKEXvFtpKbgaNfl64v/Pi','2025-11-22 23:29:23','colaborador');
 /*!40000 ALTER TABLE `usuarios` ENABLE KEYS */;
 UNLOCK TABLES;
 commit;
@@ -202,7 +209,7 @@ CREATE TABLE `ventas` (
   `total_venta` decimal(10,2) NOT NULL,
   `id_usuario` int(11) DEFAULT NULL COMMENT 'Referencia al empleado que hizo la venta (Opcional: crear tabla usuarios)',
   PRIMARY KEY (`id_venta`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -219,7 +226,9 @@ INSERT INTO `ventas` VALUES
 (4,'2025-11-21 22:00:48',15.00,1),
 (5,'2025-11-21 22:00:56',15.00,1),
 (6,'2025-11-22 11:00:27',15.00,1),
-(7,'2025-11-22 11:24:20',100.00,1);
+(7,'2025-11-22 11:24:20',100.00,1),
+(8,'2025-11-22 12:14:14',15.00,2),
+(9,'2025-11-22 17:33:06',50.00,5);
 /*!40000 ALTER TABLE `ventas` ENABLE KEYS */;
 UNLOCK TABLES;
 commit;
@@ -233,4 +242,4 @@ commit;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-11-22 11:40:52
+-- Dump completed on 2025-11-22 17:36:43

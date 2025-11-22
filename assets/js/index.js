@@ -52,8 +52,26 @@ window.app = (function(){
         }
     }
     async function performLogin(){
-        const { value: password } = await Swal.fire({
+        const { value: username } = await Swal.fire({
             title: 'Iniciar sesión',
+            text: 'Ingresa tu nombre de usuario',
+            input: 'text', 
+            inputPlaceholder: 'Nombre de usuario',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            confirmButtonText: 'Siguiente',
+            confirmButtonColor: 'var(--primary)',
+            inputValidator: (value) => {
+                if (!value) return 'Necesitas escribir tu nombre de usuario';
+            }
+        });
+
+        if (!username) {
+            return; 
+        }
+        // pedir la pass
+        const { value: password } = await Swal.fire({
+            title: `PIN de acceso para: ${username}`,
             text: 'Ingresa tu código de acceso',
             input: 'password',
             inputPlaceholder: 'Código / PIN',
@@ -65,10 +83,13 @@ window.app = (function(){
                 if (!value) return 'Necesitas escribir tu código';
             }
         });
-
+        if (!password) {
+            performLogin(); 
+            return;
+        }
         try {
-            // Llamada a la API de login
-            const response = await apiFetch('api/login.php', 'POST', { password });
+            // Llamada a la api
+            const response = await apiFetch('api/login.php', 'POST', { username, password });
             state.currentUser = response.user;
             
             Swal.fire({
@@ -80,7 +101,7 @@ window.app = (function(){
             applyRolePermissions();
             
             // Cargar datos iniciales
-            await Promise.all([loadProductos()]); // Productos siempre necesarios
+            await Promise.all([loadProductos()]); 
             
             if(state.currentUser.role === 'admin'){
                 await loadInsumos();
@@ -473,7 +494,7 @@ window.app = (function(){
                         <select name="role" class="form-control" required>
                             <option value="">Selecciona Rol...</option>
                             <option value="admin">Administrador</option>
-                            <option value="cajero">Cajero</option>
+                            <option value="colaborador">Colaborador</option>
                         </select>
                         <input type="password" name="password" placeholder="PIN/Password de Acceso" required>
                         <button type="submit" class="btn btn-primary" style="grid-column: 2">Guardar Usuario</button>
