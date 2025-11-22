@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Taquería Admin - Control de Merma</title>
     <link rel="stylesheet" href="assets/css/index.css">
-    <script src="assets/js/index.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
@@ -40,6 +39,6 @@
             </div>
         </div>
     </div>
-    <script src="assets/js/main.js"></script>
+    <script src="assets/js/index.js"></script>
 </body>
 </html>

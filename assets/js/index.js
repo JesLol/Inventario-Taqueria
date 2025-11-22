@@ -1,797 +1,689 @@
-window.app = (function() {
-    // Variables provisionales
-    let insumos = [
-        { id: 1, nombre: 'Carne de Azada', unidad: 'gramos', stock: 50000, costo: 0.15, stockInicial: 50000 },
-        { id: 2, nombre: 'Tortillas', unidad: 'unidad', stock: 1200, costo: 0.5, stockInicial: 1200 },
-        { id: 3, nombre: 'Coca Cola 600ml', unidad: 'unidad', stock: 50, costo: 12.0, stockInicial: 50 },
-        { id: 4, nombre: 'Cebolla', unidad: 'gramos', stock: 10000, costo: 0.05, stockInicial: 10000 },
-    ];
+window.app = (function(){
+    const state = {
+        insumos: [],
+        productos: [],
+        carrito: [], 
+        reporte: {
+            resumen: {},
+            productos_vendidos: [],
+            consumo_insumos: []
+        },
+        currentView: 'insumos'
+    };
+    let chartInstance = null;
+    const APP_CONTENT = document.getElementById('app-content');
 
-    let productos = [
-        { id: 101, nombre: 'Taco de Azada', precio: 20.00, receta: [
-            { insumoId: 1, cantidad: 20.0, unidad: 'gramos' },
-            { insumoId: 2, cantidad: 2, unidad: 'unidad' }
-        ]},
-        { id: 102, nombre: 'Coca Cola 600ml', precio: 18.00, receta: [
-            { insumoId: 3, cantidad: 1, unidad: 'unidad' }
-        ]},
-    ];
+    //UTILIDADES DE CONEXION A LA API
 
-    let ventas = []; // registros de ventas
-    let currentTicket = []; // Carrito de compra 
-    let currentView = 'pos';
-    let charts = {}; // Para almacenar instancias de chart.js xd
+    /**
+     * Realiza una petición fetch a la API de PHP.
+     * @param {string} url - URL del endpoint (ej: 'api/insumos.php')
+     * @param {string} method - Método HTTP (GET, POST, PUT, DELETE)
+     * @param {object} [data=null] - Cuerpo de la petición para POST/PUT
+     * @returns {Promise<object>} - El objeto de respuesta JSON del servidor
+     */
+    async function apiFetch(url, method = 'GET', data = null){
+        const options = {
+            method: method,
+            headers:{
+                'Content-Type': 'application/json',
+            }
+        };
 
-    // FUNCIONES DE UI 
-
-    function showMessage(title, text, type = 'info') {
-        const box = document.getElementById('message-box');
-        const content = document.getElementById('message-content');
-        const titleEl = document.getElementById('message-title');
-        
-        titleEl.textContent = '';
-        titleEl.className = 'modal-title'; // Resetear clases
-
-        let icon = '';
-
-        if (type === 'success') {
-            icon = '✅';
-            titleEl.classList.add('success');
-        } else if (type === 'error') {
-            icon = '❌';
-            titleEl.classList.add('error');
-        } else if (type === 'warn') {
-            icon = '⚠️';
-            titleEl.classList.add('warn');
-        } else {
-            icon = 'ℹ️';
+        if (data){
+            if (method === 'POST'){
+                options.body = JSON.stringify(data);
+            }else if (method === 'PUT' || method === 'DELETE'){
+                options.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+                const urlEncodedData = new URLSearchParams(data).toString();
+                options.body = urlEncodedData;
+            }
         }
-        
-        titleEl.innerHTML = `<span>${icon}</span>${title}`;
+        try {
+            const response = await fetch(url, options);
+            let json;
+            try {
+                json = await response.json();
+            } catch (e){
+                // Si falla la decodificacion del json
+                throw new Error(`Respuesta no válida de la API. Código HTTP: ${response.status}. (Posiblemente un error o advertencia de PHP antes del JSON)`);
+            }
+            if (!response.ok || !json.success){
+                throw new Error(json.message || `Error en la API. Código HTTP: ${response.status}`);
+            }
+            return json;
+        } catch (error){
+            console.error("Error en apiFetch:", error);
+            // Muestra el error capturado
+            showMessage('Error de API', error.message || 'Ocurrió un error al comunicarse con el servidor.', 'error');
+            throw error;
+        }
+    }
+
+
+    // INTERFAZ
+
+
+    function showMessage(title, text, type = 'success'){
+        const modal = document.getElementById('message-box');
+        document.getElementById('message-title').textContent = title;
         document.getElementById('message-text').textContent = text;
-        
-        box.classList.add('active');
+        // Estilos
+        const content = document.getElementById('message-content');
+        content.classList.remove('modal-success', 'modal-error', 'modal-info');
+        content.classList.add(`modal-${type}`);
+        modal.classList.add('active');
     }
-
-    function hideMessage() {
-        const box = document.getElementById('message-box');
-        box.classList.remove('active');
+    function hideMessage(){
+        document.getElementById('message-box').classList.remove('active');
     }
+    function changeView(newView){
+        state.currentView = newView;
+        // Quita 'active' de todos
+        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        // Pone 'active' al boton de la vista actual
+        document.querySelector(`.tab-button[data-view="${newView}"]`).classList.add('active');
 
-    function destroyCharts() {
-        Object.keys(charts).forEach(key => {
-            if (charts[key]) {
-                charts[key].destroy();
-                charts[key] = null;
-            }
-        });
-    }
-
-    function navigate(view) {
-        destroyCharts();
-        currentView = view;
-        const content = document.getElementById('app-content');
-        
-        document.querySelectorAll('.tab-button').forEach(btn => {
-            btn.classList.remove('tab-active');
-            if (btn.getAttribute('data-view') === view) {
-                btn.classList.add('tab-active');
-            }
-        });
-
-        // Contenido de la vista
-        switch (view) {
+        // Renderiza la vista
+        switch (newView){
             case 'insumos':
-                renderInsumosAdmin(content);
+                renderInsumosView();
                 break;
             case 'productos':
-                renderProductosAdmin(content);
+                renderProductosView();
                 break;
             case 'pos':
-                renderPOS(content);
+                renderPosView();
                 break;
             case 'reporte':
-                renderDailyReport(content);
+                renderReporteView();
                 break;
-            default:
-                content.innerHTML = '<p class="text-center text-gray-500 mt-10">Vista no encontrada.</p>';
+        }
+    }
+
+    //FUNCIONES DE CARGA DE DATOS --- Importante xd ---
+
+    async function loadInsumos(){
+        try {
+            const response = await apiFetch('api/insumos.php', 'GET');
+            state.insumos = response.data;
+            console.log(response.data)
+            if (state.currentView === 'insumos'){
+                renderInsumosView();
+            }
+        } catch (e){
+            console.warn("No se pudieron cargar los insumos.");
+        }
+    }
+
+    async function loadProductos(){
+        try {
+            const response = await apiFetch('api/productos.php', 'GET');
+            state.productos = response.data;
+            // Solo renderiza si esta en una vista que lo necesite inmediatamente
+            if (state.currentView === 'productos'){
+                 renderProductosView();
+            }else if (state.currentView === 'pos'){
+                renderPosView();
+            }
+        } catch (e){
+            console.warn("No se pudieron cargar los productos.");
+        }
+    }
+
+    async function loadReporteDiario(){
+        try {
+            const response = await apiFetch('api/reporte_diario.php', 'GET');
+            state.reporte = response;
+            if (state.currentView === 'reporte'){
+                renderReporteView();
+            }
+        } catch (e){
+            console.warn("No se pudo cargar el reporte diario.");
+        }
+    }
+
+    // LOGICA Y CONEXION A LA API 
+
+    // insumos
+
+    async function addInsumo(nombre, unidad_medida, stock_actual, costo_por_unidad){
+        const data = { nombre, unidad_medida, stock_actual, costo_por_unidad };
+        await apiFetch('api/insumos.php', 'POST', data);
+        showMessage('Éxito', 'Insumo agregado con éxito.', 'success');
+        await loadInsumos();
+    }
+
+    async function updateInsumoStock(id_insumo, new_stock){
+        const data = { id_insumo: id_insumo, stock_actual: new_stock };
+        await apiFetch('api/insumos.php', 'PUT', data);
+        showMessage('Éxito', 'Stock actualizado con éxito.', 'success');
+        await loadInsumos();
+    }
+
+    async function deleteInsumo(id_insumo){
+        const data = { id_insumo: id_insumo };
+        await apiFetch('api/insumos.php', 'DELETE', data);
+        showMessage('Éxito', 'Insumo eliminado con éxito.', 'success');
+        await loadInsumos();
+    }
+
+    // productos
+
+    async function addProducto(nombre_producto, precio_venta, receta){
+        const data = { nombre_producto, precio_venta, receta };
+        await apiFetch('api/productos.php', 'POST', data);
+        showMessage('Éxito', 'Producto y receta guardados con éxito.', 'success');
+        await loadProductos();
+    }
+
+    // ventas
+    async function registrarVenta(productos_vendidos, total){
+        // CAMBIAR EL ID DE USUARIO DE ACUERDO A LA BDD PENDIENTE XD ------------------
+        const id_usuario = 1;
+        const data = {
+            productos: productos_vendidos,
+            total: total,
+            id_usuario: id_usuario
+        };
+        await apiFetch('api/ventas.php', 'POST', data);
+        showMessage('Venta Exitosa', 'Venta registrada e inventario deducido.', 'success');
+
+        // crucial recargar insumos y reporte despue de una venta
+        await loadInsumos();
+        await loadReporteDiario();
+
+        // Limpiar el carrito
+        state.carrito = [];
+        renderPosView();
+    }
+
+    // MANEJADORES DE EVENTOS Y FORMULARIOS
+
+    // handlers de insumos
+
+    async function handleNewInsumoSubmit(event){
+        event.preventDefault();
+        const form = event.target;
+        const nombre = form.querySelector('[name="nombre"]').value.trim();
+        const unidad_medida = form.querySelector('[name="unidad_medida"]').value.trim();
+        const stock_actual = parseFloat(form.querySelector('[name="stock_actual"]').value);
+        const costo_por_unidad = parseFloat(form.querySelector('[name="costo_por_unidad"]').value);
+
+        if (!nombre || !unidad_medida || isNaN(stock_actual) || isNaN(costo_por_unidad)){
+            return showMessage('Error de Validación', 'Por favor, complete todos los campos correctamente.', 'error');
+        }
+
+        try {
+            await addInsumo(nombre, unidad_medida, stock_actual, costo_por_unidad);
+            form.reset();
+        } catch (e){
+            // El error se maneja en apiFetch
+        }
+    }
+
+    function handleStockUpdateClick(id_insumo){
+        const insumo = state.insumos.find(i => i.id_insumo == id_insumo);
+        if (!insumo) return showMessage('Error', 'Insumo no encontrado.', 'error');
+        const newStock = prompt(`Ingrese nuevo stock para ${insumo.nombre} (Unidad: ${insumo.unidad_medida}). Stock actual: ${insumo.stock_actual}`);
+        if (newStock !== null && !isNaN(parseFloat(newStock))){
+            updateInsumoStock(id_insumo, parseFloat(newStock));
+        }else if (newStock !== null){
+            showMessage('Advertencia', 'El valor ingresado no es un número válido.', 'warning');
+        }
+    }
+    function handleDeleteInsumoClick(id_insumo){
+        const insumo = state.insumos.find(i => i.id_insumo == id_insumo);
+        if (!insumo) return;
+
+        if (confirm(`¿Está seguro de eliminar el insumo: ${insumo.nombre}? Esta acción no se puede deshacer.`)){
+            deleteInsumo(id_insumo);
+        }
+    }
+
+
+    // handlers de los productos y recetas
+    
+    // Función auxiliar para agregar/remover campos de receta
+    function addRecetaInput(idProducto){
+        const container = document.getElementById(`receta-container-${idProducto || 'nuevo'}`);
+        if (!container) return;
+        const index = container.children.length;
+        const insumosOptions = state.insumos.map(i => 
+            `<option value="${i.id_insumo}">${i.nombre} (${i.unidad_medida})</option>`
+        ).join('');
+        const newRow = document.createElement('div');
+        newRow.classList.add('receta-row');
+        newRow.innerHTML = `
+            <select name="receta[${index}][id_insumo]" required>
+                <option value="">-- Seleccionar Insumo --</option>
+                ${insumosOptions}
+            </select>
+            <input type="number" step="0.01" name="receta[${index}][cantidad_requerida]" placeholder="Cantidad" required>
+            <button type="button" class="btn btn-danger btn-sm" onclick="window.app.removeRecetaInput(this)">X</button>
+        `;
+        container.appendChild(newRow);
+    }
+    function removeRecetaInput(button){
+        button.closest('.receta-row').remove();
+    }
+    async function handleNewProductoSubmit(event){
+        event.preventDefault();
+        const form = event.target;
+        const nombre_producto = form.querySelector('[name="nombre_producto"]').value.trim();
+        const precio_venta = parseFloat(form.querySelector('[name="precio_venta"]').value);
+        
+        // Recoleccion dinamica de la receta
+        const recetaInputs = form.querySelectorAll('.receta-row');
+        const receta = [];
+        recetaInputs.forEach(row => {
+            const id_insumo = row.querySelector('select').value;
+            const cantidad_requerida = parseFloat(row.querySelector('input').value);
+
+            if (id_insumo && !isNaN(cantidad_requerida) && cantidad_requerida > 0){
+                receta.push({
+                    id_insumo: parseInt(id_insumo),
+                    cantidad_requerida: cantidad_requerida
+                });
+            }
+        });
+        if (!nombre_producto || isNaN(precio_venta) || precio_venta <= 0){
+            return showMessage('Error de Validación', 'Nombre y Precio de Venta son obligatorios.', 'error');
+        }
+        try {
+            await addProducto(nombre_producto, precio_venta, receta);
+            form.reset();
+            // Limpia los campos de receta
+            document.getElementById('receta-container-nuevo').innerHTML = '';
+        } catch (e){
+            // El error se maneja en apiFetch
         }
     }
     
-    // Admin e insumos
-    function renderInsumosAdmin(container) {
-        container.innerHTML = `
-            <h2 class="view-title">Administracion de Inventario Base</h2>
-            <p class="view-description">Gestiona el stock de la materia prima. La unidad de medida es crucial para las recetas.</p>
-            <div class="card">
-                <h3 class="card-title">📝 Agregar Nuevo Insumo</h3>
-                <form id="form-add-insumo" class="input-group">
-                    <input type="text" id="insumo-nombre" placeholder="Nombre (ej. Queso Oaxaca)" required class="md-col-span-1">
-                    <select id="insumo-unidad" required class="md-col-span-1">
-                        <option value="">Unidad de Medida</option>
-                        <option value="gramos">Gramos (g)</option>
-                        <option value="unidad">Unidad (pza)</option>
-                        <option value="mililitros">Mililitros (ml)</option>
-                        <option value="kilogramos">Kilogramos (kg)</option>
-                        <option value="litros">Litros (l)</option>
-                    </select>
-                    <input type="number" id="insumo-stock" placeholder="Stock Inicial" required min="0" step="any" class="md-col-span-1">
-                    <button type="submit" class="btn btn-primary md-col-span-1">Añadir Insumo</button>
+    // handlers punto de venta c:
+
+    function addItemToTicket(id_producto){
+        const producto = state.productos.find(p => p.id_producto == id_producto);
+        if (!producto) return;
+        const existingItem = state.carrito.find(item => item.id_producto === id_producto);
+        if (existingItem){
+            existingItem.cantidad += 1;
+        }else {
+            state.carrito.push({
+                id_producto: producto.id_producto,
+                nombre_producto: producto.nombre_producto,
+                precio_venta: parseFloat(producto.precio_venta),
+                cantidad: 1
+            });
+        }
+        renderPosView();
+    }
+    function updateTicketItemQuantity(id_producto, newQuantity){
+        const item = state.carrito.find(item => item.id_producto === id_producto);
+        if (item){
+            item.cantidad = newQuantity;
+            if (item.cantidad <= 0){
+                removeItemFromTicket(id_producto);
+            }
+        }
+        renderPosView();
+    }
+    function removeItemFromTicket(id_producto){
+        state.carrito = state.carrito.filter(item => item.id_producto !== id_producto);
+        renderPosView();
+    }
+    async function handleProcessSale(){
+        if (state.carrito.length === 0){
+            return showMessage('Advertencia', 'El carrito de ventas está vacío.', 'warning');
+        }
+
+        const total = state.carrito.reduce((sum, item) => sum + (item.precio_venta * item.cantidad), 0);
+        
+        // Solo enviar los datos requeridos por la API
+        const productos_vendidos = state.carrito.map(item => ({
+            id_producto: item.id_producto,
+            cantidad: item.cantidad
+        }));
+
+        try {
+            await registrarVenta(productos_vendidos, total);
+        }catch(e){}
+    }
+    function clearTicket(){
+        if (confirm('¿Desea limpiar el carrito de ventas?')){
+            state.carrito = [];
+            renderPosView();
+        }
+    }
+
+    // Vistas y listeners
+
+    function renderInsumosView(){
+        const insumosHtml = `
+            <h2>Gestión de Insumos</h2>
+            
+            <div class="card p-4 mb-4">
+                <h3>Agregar Nuevo Insumo</h3>
+                <form id="form-nuevo-insumo" class="form-grid">
+                    <input type="text" name="nombre" placeholder="Nombre del Insumo" required>
+                    <input type="text" name="unidad_medida" placeholder="Unidad (kg, lt, pza)" required>
+                    <input type="number" step="0.01" name="stock_actual" placeholder="Stock Inicial" required>
+                    <input type="number" step="0.01" name="costo_por_unidad" placeholder="Costo por Unidad" required>
+                    <button type="submit" class="btn btn-primary">Guardar Insumo</button>
                 </form>
             </div>
-            
-            <h3 class="card-title">📦 Inventario Actual</h3>
-            <div class="table-wrapper">
-                <table class="table">
+
+            <h3>Inventario Actual</h3>
+            <div class="table-responsive">
+                <table class="data-table">
                     <thead>
                         <tr>
                             <th>Nombre</th>
                             <th>Unidad</th>
-                            <th>Stock Actual</th>
+                            <th>Stock</th>
                             <th>Costo Unitario</th>
+                            <th>Costo Total</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
-                    <tbody id="insumos-list">
-                        <!-- Lista de insumos -->
+                    <tbody>
+                        ${state.insumos.map(i => `
+                            <tr>
+                                <td>${i.nombre}</td>
+                                <td>${i.unidad_medida}</td>
+                                <td>${parseFloat(i.stock_actual).toFixed(2)}</td>
+                                <td>$${parseFloat(i.costo_por_unidad).toFixed(2)}</td>
+                                <td>$${(i.stock_actual * i.costo_por_unidad).toFixed(2)}</td>
+                                <td>
+                                    <button class="btn btn-secondary btn-sm" onclick="window.app.handleStockUpdateClick(${i.id_insumo})">Ajustar Stock</button>
+                                    <button class="btn btn-danger btn-sm" onclick="window.app.handleDeleteInsumoClick(${i.id_insumo})">Eliminar</button>
+                                </td>
+                            </tr>
+                        `).join('')}
                     </tbody>
                 </table>
             </div>
         `;
-
-        document.getElementById('form-add-insumo').addEventListener('submit', function(e) {
-            e.preventDefault();
-            addInsumo();
-        });
-
-        renderInsumosList();
+        APP_CONTENT.innerHTML = insumosHtml;
+        setupInsumosListeners(); // Llama a la conexion de eventos dinamicos
     }
-
-    function renderInsumosList() {
-        const list = document.getElementById('insumos-list');
-        if (!list) return;
-
-        list.innerHTML = insumos.map(insumo => `
-            <tr>
-                <td>${insumo.nombre}</td>
-                <td>${insumo.unidad}</td>
-                <td class="flex items-center space-x-2">
-                    <input type="number" id="stock-${insumo.id}" value="${insumo.stock.toFixed(2)}" min="0" step="any" style="width: 80px; padding: 0.3rem;" />
-                    <button onclick="window.app.updateStock(${insumo.id}, document.getElementById('stock-${insumo.id}').value)" class="btn btn-secondary" style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">
-                        Actualizar
-                    </button>
-                </td>
-                <td>$${insumo.costo.toFixed(2)}</td>
-                <td>
-                    <button onclick="window.app.deleteInsumo(${insumo.id})" class="btn btn-danger" style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">
-                        Eliminar
-                    </button>
-                </td>
-            </tr>
-        `).join('');
-    }
-
-    function addInsumo() {
-        const nombre = document.getElementById('insumo-nombre').value.trim();
-        const unidad = document.getElementById('insumo-unidad').value;
-        const stock = parseFloat(document.getElementById('insumo-stock').value);
-
-        if (!nombre || !unidad || isNaN(stock) || stock < 0) {
-            showMessage("Error de Validacion", "Por favor, completa todos los campos correctamente.");
-            return;
-        }
-
-        const newId = insumos.length > 0 ? Math.max(...insumos.map(i => i.id)) + 1 : 1;
-        // Simulacion de llamada a api/insumos.php POST
-        insumos.push({ id: newId, nombre, unidad, stock, costo: 0, stockInicial: stock });
-        
-        showMessage("Insumo Agregado", `"${nombre}" agregado con éxito.`, 'success');
-
-        document.getElementById('form-add-insumo').reset();
-        renderInsumosList();
-    }
-
-    function updateStock(id, newStock) {
-        const insumo = insumos.find(i => i.id === id);
-        const stock = parseFloat(newStock);
-
-        if (insumo && !isNaN(stock) && stock >= 0) {
-            // Simulacion de llamada a api/insumos.php PUT
-            insumo.stock = stock;
-            insumo.stockInicial = stock; // Para el reporte
-            showMessage("Stock Actualizado", `Stock de ${insumo.nombre} actualizado a ${stock.toFixed(2)} ${insumo.unidad}.`, 'success');
-            renderInsumosList();
-        } else {
-            showMessage("Error", "El stock debe ser un número positivo.", 'error');
-        }
-    }
-    
-    function deleteInsumo(id) {
-        // Simulacion de llamada a api/insumos.php DELETE
-        insumos = insumos.filter(i => i.id !== id);
-        productos.forEach(p => {
-            p.receta = p.receta.filter(r => r.insumoId !== id);
-        });
-        showMessage("Insumo Eliminado", "El insumo ha sido eliminado del inventario.", 'success');
-        renderInsumosList();
-    }
-
-
-    // Admin: Productos y recetass
-    function renderProductosAdmin(container) {
-        container.innerHTML = `
-            <h2 class="view-title" style="border-color: #ef4444;">Configuracion de Menú y Recetas</h2>
-            <p class="view-description">Define los productos de venta y la receta (consumo de insumos) para automatizar la deduccion de inventario.</p>
-            <div class="card">
-                <h3 class="card-title">🌮 Agregar Nuevo Producto/Receta</h3>
-                <form id="form-add-producto">
-                    <div class="input-group grid-3-col mb-4">
-                        <input type="text" id="producto-nombre" placeholder="Nombre del Producto" required class="col-span-1">
-                        <input type="number" id="producto-precio" placeholder="Precio Venta" required min="0" step="0.01" class="col-span-1">
-                    </div>
-                    <h4 class="card-title" style="font-size: 1rem; margin-bottom: 0.5rem; border-left: none;">Receta: Insumos Requeridos por Unidad</h4>
-                    <div id="receta-inputs" class="space-y-3 p-4" style="border: 1px solid #e5e7eb; border-radius: 0.5rem; background-color: #f9fafb;">
-                        <!-- Insumos para la receta se añaden aquí -->
-                    </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
-                        <button type="button" onclick="window.app.addRecetaInput()" class="btn btn-secondary" style="color: #ef4444; border: none; background: none;">
-                            + Añadir Insumo a Receta
-                        </button>
-                        <button type="submit" class="btn btn-primary">Guardar Producto</button>
-                    </div>
-                </form>
-            </div>
+    function renderProductosView(){
+        const productosHtml = `
+            <h2>Gestión de Menú y Recetas</h2>
             
-            <h3 class="card-title">📋 Menú y Recetas Actuales</h3>
-            <div class="table-wrapper">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Producto</th>
-                            <th>Precio</th>
-                            <th>Receta (Insumos/Cant.)</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="productos-list">
-                        <!-- Lista de productos -->
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-        document.getElementById('form-add-producto').addEventListener('submit', addProducto);
-        addRecetaInput(); // Add fila inicial
-        renderProductosList();
-    }
-
-    function getInsumoUnit(id) {
-        const insumo = insumos.find(i => i.id === parseInt(id));
-        return insumo ? insumo.unidad : '';
-    }
-    
-    function addRecetaInput() {
-        const container = document.getElementById('receta-inputs');
-        if (insumos.length === 0) {
-             container.innerHTML = '<p style="color: var(--color-error); font-style: italic;">No hay insumos disponibles. Agrega insumos primero.</p>';
-             return;
-        }
-        
-        const newRow = document.createElement('div');
-        newRow.className = 'receta-row';
-        newRow.style.cssText = 'display: flex; gap: 0.5rem; align-items: center;';
-        newRow.innerHTML = `
-            <select class="insumo-select" style="flex-grow: 1; min-width: 120px;">
-                ${insumos.map(i => `<option value="${i.id}">${i.nombre} (${i.unidad})</option>`).join('')}
-            </select>
-            <input type="number" placeholder="Cant." min="0.01" step="any" class="insumo-cantidad" style="width: 80px;">
-            <button type="button" onclick="window.app.removeRecetaInput(this)" class="btn-danger" style="padding: 0.3rem 0.5rem;">
-                X
-            </button>
-        `;
-        container.appendChild(newRow);
-    }
-
-    function removeRecetaInput(button) {
-        const row = button.closest('.receta-row');
-        row.remove();
-    }
-
-    function addProducto(e) {
-        e.preventDefault();
-        const nombre = document.getElementById('producto-nombre').value.trim();
-        const precio = parseFloat(document.getElementById('producto-precio').value);
-
-        if (!nombre || isNaN(precio) || precio <= 0) {
-            showMessage("Error", "El nombre y el precio del producto son obligatorios.", 'error');
-            return;
-        }
-
-        const receta = [];
-        let validReceta = true;
-        const insumoRows = document.querySelectorAll('#receta-inputs .receta-row');
-        
-        insumoRows.forEach(row => {
-            const selectEl = row.querySelector('.insumo-select');
-            const cantidadEl = row.querySelector('.insumo-cantidad');
-
-            if (!selectEl || !cantidadEl) return; 
-
-            const insumoId = parseInt(selectEl.value);
-            const cantidad = parseFloat(cantidadEl.value);
-            const unidad = getInsumoUnit(insumoId);
-            
-            if (isNaN(cantidad) || cantidad <= 0) {
-                validReceta = false;
-            }
-
-            if (insumoId && cantidad > 0) {
-                receta.push({ insumoId, cantidad, unidad });
-            }
-        });
-
-        if (!validReceta) {
-            showMessage("Error", "La cantidad de insumo en la receta debe ser un número positivo.", 'error');
-            return;
-        }
-        
-        if (receta.length === 0) {
-            showMessage("Advertencia", "El producto no tiene insumos asignados. No se deducirá inventario al venderlo.", 'warn');
-        }
-
-        const newId = productos.length > 0 ? Math.max(...productos.map(p => p.id)) + 1 : 101;
-        // Simulacion de llamada a api/productos.php POST
-        productos.push({ id: newId, nombre: nombre, precio: precio, receta: receta });
-        
-        showMessage("Producto Guardado", `"${nombre}" (Receta: ${receta.length} insumos) ha sido guardado.`, 'success');
-
-        document.getElementById('form-add-producto').reset();
-        document.getElementById('receta-inputs').innerHTML = ''; // Limpiar receta
-        addRecetaInput(); // Poner uno nuevo
-        renderProductosList();
-    }
-
-    function renderProductosList() {
-        const list = document.getElementById('productos-list');
-        if (!list) return;
-
-        list.innerHTML = productos.map(p => {
-            const recetaHtml = p.receta.map(r => {
-                const insumo = insumos.find(i => i.id === r.insumoId);
-                return `<span style="display: block; font-size: 0.75rem; color: #4b5563;">${r.cantidad} ${r.unidad} de ${insumo ? insumo.nombre : 'Insumo Eliminado'}</span>`;
-            }).join('');
-
-            return `
-                <tr>
-                    <td style="font-weight: 600;">${p.nombre}</td>
-                    <td>$${p.precio.toFixed(2)}</td>
-                    <td>${recetaHtml || '<span style="color: #9ca3af; font-style: italic;">Sin receta</span>'}</td>
-                    <td>
-                        <button onclick="window.app.deleteProducto(${p.id})" class="btn btn-danger" style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">
-                            Eliminar
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    }
-    
-    function deleteProducto(id) {
-        // Simulacion de llamada a api/productos.php DELETE
-        productos = productos.filter(p => p.id !== id);
-        showMessage("Producto Eliminado", "El producto ha sido eliminado del menú.", 'success');
-        renderProductosList();
-    }
-
-    // PUNTO DE VENTA 
-    function renderPOS(container) {
-        container.innerHTML = `
-            <h2 class="view-title" style="border-color: #10b981;">Punto de Venta</h2>
-            <p class="view-description">Registra las ventas aquí. Al confirmar, el inventario de insumos se deducirá automáticamente según la receta de cada producto.</p>
-            
-            <div class="pos-layout">
-                <!-- Columna 1: Productos -->
-                <div class="card" style="padding: 1rem;">
-                    <h3 class="card-title">Seleccion de Productos</h3>
-                    <div id="pos-product-list" class="pos-product-list">
-                        <!-- Botones de productos -->
-                    </div>
-                </div>
-
-                <!-- Columna 2: Ticket/Caja -->
-                <div class="pos-ticket">
-                    <h3 class="card-title" style="margin-bottom: 0.5rem;">Ticket Actual 🧾</h3>
-                    <div id="ticket-items" style="min-height: 200px;">
-                        <!-- Ítems del ticket -->
+            <div class="card p-4 mb-4">
+                <h3>Agregar Nuevo Producto</h3>
+                <form id="form-nuevo-producto">
+                    <div class="form-grid">
+                        <input type="text" name="nombre_producto" placeholder="Nombre del Producto (Ej: Taco de Pastor)" required>
+                        <input type="number" step="0.01" name="precio_venta" placeholder="Precio de Venta ($)" required>
+                        <div></div>
                     </div>
                     
-                    <div class="ticket-total">
-                        <span>TOTAL:</span>
-                        <span id="ticket-total-display">$0.00</span>
+                    <h4>Receta (Insumos Requeridos)</h4>
+                    <div id="receta-container-nuevo" class="receta-container">
+                        </div>
+                    <button type="button" class="btn btn-secondary mb-3" onclick="window.app.addRecetaInput()">+ Añadir Insumo a Receta</button>
+                    <button type="submit" class="btn btn-primary btn-block">Guardar Producto</button>
+                </form>
+            </div>
+
+            <h3>Menú Actual</h3>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Producto</th>
+                            <th>Precio Venta</th>
+                            <th>Receta (Insumo : Cantidad)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${state.productos.map(p => `
+                            <tr>
+                                <td>${p.id_producto}</td>
+                                <td>${p.nombre_producto}</td>
+                                <td>$${parseFloat(p.precio_venta).toFixed(2)}</td>
+                                <td>
+                                    <ul>
+                                    ${p.receta.map(r => 
+                                        `<li>${r.insumo_nombre}: ${parseFloat(r.cantidad_requerida).toFixed(2)} ${r.unidad_medida}</li>`
+                                    ).join('')}
+                                    </ul>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        APP_CONTENT.innerHTML = productosHtml;
+        setupProductosListeners();
+    }
+
+    function renderPosView(){
+        const totalVenta = state.carrito.reduce((sum, item) => sum + (item.precio_venta * item.cantidad), 0);
+
+        const posHtml = `
+            <h2>Punto de Venta</h2>
+            <div class="pos-layout">
+                <div class="menu-productos">
+                    <h3>Productos Disponibles</h3>
+                    <div class="product-grid">
+                        ${state.productos.map(p => `
+                            <button class="product-card" onclick="window.app.addItemToTicket(${p.id_producto})">
+                                <span class="product-name">${p.nombre_producto}</span>
+                                <span class="product-price">$${parseFloat(p.precio_venta).toFixed(2)}</span>
+                            </button>
+                        `).join('')}
                     </div>
-
-                    <div style="margin-top: 1rem;">
-                        <button onclick="window.app.processSale()" class="btn btn-primary" style="width: 100%; margin-bottom: 0.5rem;">
-                            Cerrar Venta
-                        </button>
-                        <button onclick="window.app.clearTicket()" class="btn btn-secondary" style="width: 100%;">
-                            Limpiar Ticket
-                        </button>
+                </div>
+                <div class="ticket-area">
+                    <h3>Ticket Actual</h3>
+                    <div class="ticket-list">
+                        ${state.carrito.map(item => `
+                            <div class="ticket-item">
+                                <span class="item-name">${item.nombre_producto}</span>
+                                <div class="item-controls">
+                                    <input type="number" min="1" value="${item.cantidad}" 
+                                           onchange="window.app.updateTicketItemQuantity(${item.id_producto}, parseInt(this.value))" 
+                                           class="quantity-input">
+                                    <span class="item-total">$${(item.precio_venta * item.cantidad).toFixed(2)}</span>
+                                    <button class="btn btn-danger btn-sm" onclick="window.app.removeItemFromTicket(${item.id_producto})">X</button>
+                                </div>
+                            </div>
+                        `).join('')}
                     </div>
+                    <div class="ticket-summary">
+                        <p class="total-text">Total: <span>$${totalVenta.toFixed(2)}</span></p>
+                    </div>
+                    <button class="btn btn-success btn-lg btn-block mt-3" onclick="window.app.handleProcessSale()">
+                        Procesar Venta ($${totalVenta.toFixed(2)})
+                    </button>
+                    <button class="btn btn-secondary btn-block mt-2" onclick="window.app.clearTicket()">Limpiar Ticket</button>
                 </div>
             </div>
         `;
-
-        renderProductButtons();
-        renderTicket();
+        APP_CONTENT.innerHTML = posHtml;
     }
 
-    function renderProductButtons() {
-        const list = document.getElementById('pos-product-list');
-        if (!list) return;
-
-        list.innerHTML = productos.map(p => `
-            <button onclick="window.app.addItemToTicket(${p.id})" class="pos-product-btn">
-                ${p.nombre} <br>
-                <span style="font-size: 1rem; color: var(--color-taco); font-weight: 700;">$${p.precio.toFixed(2)}</span>
-            </button>
-        `).join('');
-    }
-
-    function addItemToTicket(productId) {
-        const existingItem = currentTicket.find(item => item.id === productId);
-        if (existingItem) {
-            existingItem.quantity += 1;
-        } else {
-            const product = productos.find(p => p.id === productId);
-            currentTicket.push({
-                id: productId,
-                name: product.nombre,
-                price: product.precio,
-                quantity: 1
-            });
-        }
-        renderTicket();
-    }
-
-    function updateTicketItemQuantity(itemId, quantity) {
-        const item = currentTicket.find(i => i.id === itemId);
-        if (item) {
-            const newQty = parseInt(quantity);
-            if (newQty > 0) {
-                item.quantity = newQty;
-            } else {
-                currentTicket = currentTicket.filter(i => i.id !== itemId);
+    function renderReporteView(){
+        const reporte = state.reporte;
+        
+        // Funcion para renderizar el chart 
+        function setupReporteChart(){
+            if (chartInstance){
+                chartInstance.destroy();
             }
-        }
-        renderTicket();
-    }
+            const ctx = document.getElementById('productosChart');
+            if (!ctx) return;
 
-    function removeItemFromTicket(itemId) {
-        currentTicket = currentTicket.filter(i => i.id !== itemId);
-        renderTicket();
-    }
+            const labels = reporte.productos_vendidos.map(p => p.nombre_producto);
+            const data = reporte.productos_vendidos.map(p => parseFloat(p.total_vendido));
 
-    function calculateTicketTotal() {
-        return currentTicket.reduce((total, item) => total + (item.price * item.quantity), 0);
-    }
-
-    function renderTicket() {
-        const itemsContainer = document.getElementById('ticket-items');
-        const totalDisplay = document.getElementById('ticket-total-display');
-        
-        if (!itemsContainer || !totalDisplay) return;
-
-        if (currentTicket.length === 0) {
-            itemsContainer.innerHTML = '<p style="text-align: center; color: #9ca3af; padding: 2rem 0;">Ticket vacío. Añade productos.</p>';
-            totalDisplay.textContent = '$0.00';
-            return;
-        }
-
-        itemsContainer.innerHTML = currentTicket.map(item => `
-            <div class="ticket-item">
-                <div style="flex-grow: 1;">
-                    <p style="font-weight: 600;">${item.name}</p>
-                    <span style="font-size: 0.75rem; color: var(--color-gray);">$${item.price.toFixed(2)} c/u</span>
-                </div>
-                <input type="number" value="${item.quantity}" min="1" onchange="window.app.updateTicketItemQuantity(${item.id}, this.value)" style="width: 50px; text-align: center; margin-right: 0.5rem; padding: 0.2rem;" />
-                <span style="font-weight: 700;">$${(item.price * item.quantity).toFixed(2)}</span>
-                <button onclick="window.app.removeItemFromTicket(${item.id})" class="btn-danger" style="margin-left: 0.5rem; padding: 0.2rem 0.4rem; font-size: 0.75rem;">X</button>
-            </div>
-        `).join('');
-
-        totalDisplay.textContent = `$${calculateTicketTotal().toFixed(2)}`;
-    }
-
-    function clearTicket() {
-        currentTicket = [];
-        renderTicket();
-    }
-
-    function processSale() {
-        if (currentTicket.length === 0) {
-            showMessage("Venta Vacía", "No puedes cerrar una venta sin productos.", 'warn');
-            return;
-        }
-
-        const total = calculateTicketTotal();
-        const saleDetails = [];
-        let stockSufficient = true;
-        const requiredChanges = [];
-
-        // Verificar stock
-        for (const ticketItem of currentTicket) {
-            const product = productos.find(p => p.id === ticketItem.id);
-            if (!product) continue;
-
-            saleDetails.push({
-                id_producto: product.id,
-                cantidad: ticketItem.quantity,
-                subtotal: product.price * ticketItem.quantity
-            });
-
-            for (const itemReceta of product.receta) {
-                const insumo = insumos.find(i => i.id === itemReceta.insumoId);
-                if (!insumo) continue; 
-
-                const consumption = itemReceta.cantidad * ticketItem.quantity;
-                
-                if (insumo.stock < consumption) {
-                    stockSufficient = false;
-                    showMessage("Fallo de Inventario", `Stock insuficiente de ${insumo.nombre}. Necesitas ${consumption.toFixed(2)} ${insumo.unidad}, solo hay ${insumo.stock.toFixed(2)}.`, 'error');
-                    break;
-                }
-                
-                // Acumular deduccion
-                let change = requiredChanges.find(c => c.id === insumo.id);
-                if (!change) {
-                    change = { id: insumo.id, name: insumo.nombre, deduction: 0 };
-                    requiredChanges.push(change);
-                }
-                change.deduction += consumption;
-            }
-            if (!stockSufficient) break;
-        }
-
-        if (!stockSufficient) return;
-
-        // Ejecutar la centa y deduccion
-        // Simulacion de llamada a api/ventas.php POST
-
-        try {
-            // Aplicar deducciones al inventario
-            for (const change of requiredChanges) {
-                const insumo = insumos.find(i => i.id === change.id);
-                insumo.stock -= change.deduction;
-            }
-
-            // Registrar la venta
-            ventas.push({
-                id: ventas.length + 1,
-                date: new Date().toLocaleTimeString('es-MX'),
-                total: total,
-                details: saleDetails
-            });
-
-            showMessage("Venta Exitosa", `Venta de $${total.toFixed(2)} registrada. El inventario ha sido deducido.`, 'success');
-            clearTicket(); // Limpiar el POS
-
-        } catch (e) {
-            // Simulacion de Rollback
-            showMessage("Error Crítico", "Fallo al registrar la venta. No se pudo deducir el inventario. Se deshace la operacion.", 'error');
-        }
-    }
-
-
-    // REPORTE DIARIO 
-    function renderDailyReport(container) {
-        container.innerHTML = `
-            <h2 class="view-title" style="border-color: #f59e0b;">Reporte Diario de Operaciones</h2>
-            <p class="view-description">Resumen de ventas y análisis de consumo de inventario para el día actual (simulado).</p>
-            
-            <div id="report-summary-grid" class="report-grid">
-                <!-- Resumen -->
-            </div>
-            
-            <div class="report-grid">
-                <!-- Gráfico de Productos Vendidos -->
-                <div class="card">
-                    <h3 class="card-title">📊 Top Productos Vendidos</h3>
-                    <div class="chart-container"><canvas id="productos-chart"></canvas></div>
-                </div>
-                <!-- Gráfico de Insumos Consumidos -->
-                <div class="card">
-                    <h3 class="card-title">📉 Insumos Más Consumidos</h3>
-                    <div class="chart-container"><canvas id="insumos-chart"></canvas></div>
-                </div>
-            </div>
-        `;
-        
-        generateReportData();
-        renderReportSummary();
-        renderProductChart();
-        renderInsumosChart();
-    }
-
-    function generateReportData() {
-        // Simulacion de llamada a api/reporte_diario.php GET
-        const totalVentas = ventas.reduce((sum, v) => sum + v.total, 0);
-        const numVentas = ventas.length;
-        
-        const productsSold = {};
-        const insumoConsumption = {};
-        
-        ventas.forEach(v => {
-            v.details.forEach(d => {
-                const product = productos.find(p => p.id === d.id_producto);
-                if (!product) return;
-
-                // 1. Productos vendidos
-                productsSold[product.nombre] = (productsSold[product.nombre] || 0) + d.cantidad;
-
-                // 2. Consumo de insumos
-                product.receta.forEach(r => {
-                    const insumo = insumos.find(i => i.id === r.insumoId);
-                    if (!insumo) return;
-
-                    const consumption = r.cantidad * d.cantidad;
-                    const key = `${insumo.nombre} (${insumo.unidad})`;
-                    insumoConsumption[key] = (insumoConsumption[key] || 0) + consumption;
-                });
-            });
-        });
-
-        // Calcular costo de insumos restantes (merma/diferencia)
-        const initialValue = insumos.reduce((sum, i) => sum + (i.stockInicial * i.costo), 0);
-        const currentValue = insumos.reduce((sum, i) => sum + (i.stock * i.costo), 0);
-        const costOfGoodsSold = initialValue - currentValue;
-
-        return {
-            totalVentas,
-            numVentas,
-            productsSold: Object.entries(productsSold).sort((a, b) => b[1] - a[1]),
-            insumoConsumption: Object.entries(insumoConsumption).sort((a, b) => b[1] - a[1]),
-            costOfGoodsSold,
-            initialValue,
-            currentValue
-        };
-    }
-
-    function renderReportSummary() {
-        const data = generateReportData();
-        const grid = document.getElementById('report-summary-grid');
-        if (!grid) return;
-
-        const summaryHtml = `
-            <div class="report-summary-card" style="border-left-color: var(--color-taco);">
-                <h4>Total de Ventas Brutas</h4>
-                <p>$${data.totalVentas.toFixed(2)}</p>
-            </div>
-            <div class="report-summary-card" style="border-left-color: #2563eb;">
-                <h4>Costo de Mercancía Vendida (CMV)</h4>
-                <p>$${data.costOfGoodsSold.toFixed(2)}</p>
-            </div>
-            <div class="report-summary-card" style="border-left-color: #10b981;">
-                <h4>Ganancia Bruta Estimada</h4>
-                <p>$${(data.totalVentas - data.costOfGoodsSold).toFixed(2)}</p>
-            </div>
-            <div class="report-summary-card" style="border-left-color: #f59e0b;">
-                <h4>Número de Transacciones</h4>
-                <p>${data.numVentas}</p>
-            </div>
-        `;
-        grid.innerHTML = summaryHtml;
-    }
-
-    function renderProductChart() {
-        const data = generateReportData().productsSold;
-        const ctx = document.getElementById('productos-chart').getContext('2d');
-        
-        charts.productos = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: data.slice(0, 5).map(item => item[0]),
-                datasets: [{
-                    label: 'Cantidad Vendida',
-                    data: data.slice(0, 5).map(item => item[1]),
-                    backgroundColor: [
-                        'rgba(255, 99, 132, 0.6)',
-                        'rgba(255, 159, 64, 0.6)',
-                        'rgba(255, 205, 86, 0.6)',
-                        'rgba(75, 192, 192, 0.6)',
-                        'rgba(54, 162, 235, 0.6)'
-                    ],
-                    borderColor: 'white',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Cantidad Vendida',
+                        data: data,
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }]
                 },
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    title: {
-                        display: true,
-                        text: 'Top 5 Productos por Unidades'
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true }
                     }
                 }
-            }
-        });
-    }
-
-    function renderInsumosChart() {
-        const data = generateReportData().insumoConsumption;
-        const ctx = document.getElementById('insumos-chart').getContext('2d');
+            });
+        }
         
-        charts.insumos = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: data.slice(0, 5).map(item => item[0]),
-                datasets: [{
-                    label: 'Consumo Total',
-                    data: data.slice(0, 5).map(item => item[1]),
-                    backgroundColor: [
-                        'rgba(153, 102, 255, 0.7)',
-                        'rgba(255, 99, 132, 0.7)',
-                        'rgba(255, 205, 86, 0.7)',
-                        'rgba(54, 162, 235, 0.7)',
-                        'rgba(75, 192, 192, 0.7)'
-                    ],
-                    hoverOffset: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Consumo de Insumos (Por Unidades)'
-                    }
-                }
-            }
-        });
+        const resumen = reporte.resumen;
+        const reporteHtml = `
+            <h2>Reporte Diario - ${new Date().toLocaleDateString()}</h2>
+            <div class="reporte-summary">
+                <div class="card summary-card">
+                    <h4>Ventas Totales</h4>
+                    <p class="summary-value">$${parseFloat(resumen.total_ventas || 0).toFixed(2)}</p>
+                </div>
+                <div class="card summary-card">
+                    <h4># de Transacciones</h4>
+                    <p class="summary-value">${resumen.num_ventas || 0}</p>
+                </div>
+                <div class="card summary-card">
+                    <h4>Total Productos Vendidos</h4>
+                    <p class="summary-value">${resumen.total_productos || 0}</p>
+                </div>
+            </div>
+
+            <div class="reporte-details">
+                <div class="card">
+                    <h3>Productos Más Vendidos (Cantidad)</h3>
+                    <canvas id="productosChart"></canvas>
+                </div>
+                <div class="card">
+                    <h3>Consumo de Insumos (Merma Estimada)</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Insumo</th>
+                                    <th>Consumo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${reporte.consumo_insumos.map(c => `
+                                    <tr>
+                                        <td>${c.insumo_nombre}</td>
+                                        <td>${parseFloat(c.consumo_total).toFixed(2)} ${c.unidad_medida}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        APP_CONTENT.innerHTML = reporteHtml;
+        setupReporteChart(); // Llama a la función que dibuja el grafico
     }
 
-    // INICIALIZACION
-    function initialize() {
+
+    // listeners dinamicos
+
+    // Conectar los listeners del formulario de insumos (se llama dentro de renderInsumosView)
+    function setupInsumosListeners(){
+        const form = document.getElementById('form-nuevo-insumo');
+        if (form){
+            form.addEventListener('submit', handleNewInsumoSubmit);
+        }
+    }
+    
+    // Conectar los listeners del formulario de productos (se llama dentro de renderProductosView)
+    function setupProductosListeners(){
+        const form = document.getElementById('form-nuevo-producto');
+        if (form){
+            form.addEventListener('submit', handleNewProductoSubmit);
+        }
+    }
+
+    // Conexion de listeners estaticos (Navegacion)
+    function setupStaticListeners(){
         // Enlazar botones de navegacion
         document.querySelectorAll('.tab-button').forEach(button => {
             button.addEventListener('click', (e) => {
-                navigate(e.target.getAttribute('data-view'));
+                changeView(e.target.getAttribute('data-view'));
             });
         });
-
-        // Iniciar en la vista 
-        navigate(currentView);
     }
-    
-    // Ejecutar la inicializacion cuando el DOM esta cargado
-    document.addEventListener('DOMContentLoaded', initialize);
 
-    // Funciones públicas expuestas a window.app 
+    // INICIALIZACION DE LA APLICACIÓN
+
+    async function init(){
+        console.log("Inicializando Gestor Taquería...");
+
+        // Conectar listeners de navegación
+        setupStaticListeners();
+
+        // Cargar datos iniciales de la base de datos
+        try {
+            // Cargar todos los datos al inicio para que estén disponibles en todas las vistas
+            await loadInsumos();
+            await loadProductos();
+            await loadReporteDiario();
+        } catch (e){
+            showMessage('Fallo al Cargar', 'La aplicación no pudo cargar los datos iniciales de la base de datos.', 'error');
+        }
+
+        // Establecer la vista inicial
+        const initialView = 'insumos';
+        changeView(initialView);
+    }
+
+    // EXPOSICIÓN DE FUNCIONES PUBLICAS
+
+    // Ejecutar la inicializacion cuando el DOM esta cargado
+    document.addEventListener('DOMContentLoaded', init);
+
+    // Funciones publicas expuestas a window.app
     return {
-        initialize,
+        // Core
+        init,
+        apiFetch, 
         showMessage,
         hideMessage,
-        navigate,
-        updateStock,
-        deleteInsumo,
-        deleteProducto,
+        changeView,
+        
+        // Carga de Datos
+        loadInsumos,
+        loadProductos,
+        loadReporteDiario,
+
+        // Insumos CRUD
+        handleNewInsumoSubmit, // Nuevo Insumo
+        handleStockUpdateClick, // Ajustar Stock 
+        handleDeleteInsumoClick, // Eliminar Insumo 
+        
+        // Productos/Recetas CRUD
+        handleNewProductoSubmit, // Nuevo Producto
         addRecetaInput,
         removeRecetaInput,
+
+        // Ventas
         addItemToTicket,
         updateTicketItemQuantity,
         removeItemFromTicket,
-        processSale,
-        clearTicket
+        handleProcessSale, // Procesar Venta 
+        clearTicket,
+        
+        // Estado
+        state // Eliminar xd
     };
 
-})(); 
+})();
