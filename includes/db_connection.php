@@ -5,12 +5,17 @@ $username = "root";
 $password = "root";
 $dbname = "taqueria_inventario_db";
 
-// Crear conexion
 $conn = new mysqli($servername, $username, $password, $dbname);
 
-// Chequear conexion
 if ($conn->connect_error) {
-    die("Conexión fallida: " . $conn->connect_error);
+    die("Connection failed: " . $conn->connect_error);
 }
+// Configurar la zona horaria de php
+date_default_timezone_set('America/Mexico_City');
+
+// Sincronizar sona horaria de php con mysql
+$offset = date('P'); 
+$conn->query("SET time_zone='$offset';");
+
 $conn->set_charset("utf8");
 ?>

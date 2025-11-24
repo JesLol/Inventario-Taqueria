@@ -692,7 +692,10 @@ window.app = (function(){
     
     function renderReporteView(){
         const { resumen, consumo_insumos, productos_vendidos, ventas_detalladas, periodo } = state.reporte;
-        
+        let totalCalculado = 0;
+        if (ventas_detalladas && ventas_detalladas.length > 0) {
+            totalCalculado = ventas_detalladas.reduce((suma, venta) => suma + parseFloat(venta.total), 0);
+        }
         const titulos = {
             'diario': `Reporte de Hoy (${new Date().toLocaleDateString()})`,
             'mensual': 'Reporte del Mes Actual',
@@ -718,11 +721,11 @@ window.app = (function(){
                 <div class="reporte-summary">
                     <div class="card summary-card">
                         <h4>Venta Total</h4>
-                        <p class="summary-value text-success">$${parseFloat(resumen.total_ventas || 0).toFixed(2)}</p>
+                        <p class="summary-value text-success">$${totalCalculado.toFixed(2)}</p>
                     </div>
                     <div class="card summary-card">
                         <h4>Transacciones</h4>
-                        <p class="summary-value">${resumen.num_ventas || 0}</p>
+                        <p class="summary-value">${ventas_detalladas ? ventas_detalladas.length : 0}</p>
                     </div>
                     <div class="card summary-card">
                         <h4>Prod. Vendidos</h4>

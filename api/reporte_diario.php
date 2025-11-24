@@ -31,7 +31,6 @@ if ($method === 'GET') {
     // Resumen
     $sql_ventas = "
         SELECT 
-            IFNULL(SUM(v.total_venta), 0) AS total_ventas,
             COUNT(DISTINCT v.id_venta) AS num_ventas,
             IFNULL(SUM(dv.cantidad_vendida), 0) AS total_productos
         FROM ventas v
